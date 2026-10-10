@@ -1,9 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { createTokenServer, loadConfig, signSession, verifySession } from './server.mjs';
+import { createTokenServer, loadConfig, signSession, verifySession, normalizeExpiration } from './server.mjs';
 
 const config = () => loadConfig({ CONVAI_API_KEY: 'fake-server-secret', AUTH_MODE: 'session', SESSION_SIGNING_SECRET: 's'.repeat(64) });
+
+test('Convai timezone-free expirations are interpreted as UTC', () => {
+  assert.equal(normalizeExpiration('2026-10-10T18:59:01.513412'), '2026-10-10T18:59:01.513Z');
+  assert.equal(normalizeExpiration('2026-10-10T21:59:01+03:00'), '2026-10-10T18:59:01.000Z');
+  assert.equal(normalizeExpiration('invalid'), null);
+});
+
+test('timezone-free Convai token response returns canonical UTC expiration', async t => {
+  const expirationTime = new Date(Date.now() + 3600000).toISOString();
+  const { url, headers } = await fixture(t, { fetchImpl: async () => Response.json({ apiAuthToken: 'fake-token', expirationTime: expirationTime.slice(0, -1) }) });
+  const res = await fetch(`${url}/v1/convai/token`, { method: 'POST', headers, body: '{}' });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { apiAuthToken: 'fake-token', expirationTime });
+});
 async function fixture(t, options = {}) {
   const cfg = config();
   const server = createTokenServer(cfg, options);

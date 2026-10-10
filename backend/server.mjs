@@ -56,6 +56,15 @@ export function verifySession(config, authorization, now = Math.floor(Date.now()
   } catch { return null; }
 }
 
+export function normalizeExpiration(value) {
+  // Convai currently returns UTC ISO timestamps without a timezone suffix.
+  // Match the SDK's UTC interpretation instead of parsing these as server-local time.
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})?$/.test(value)) return null;
+  const zoned = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
+  const milliseconds = Date.parse(zoned);
+  return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null;
+}
+
 function respond(res, status, payload) {
   if (res.destroyed) return;
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -125,9 +134,10 @@ export function createTokenServer(config, { fetchImpl = fetch, now = Date.now } 
         return respond(res, 502, { error: 'invalid_convai_response' });
       const result = { apiAuthToken: payload.apiAuthToken.trim() };
       if (payload.expirationTime !== undefined) {
-        if (typeof payload.expirationTime !== 'string' || !Number.isFinite(Date.parse(payload.expirationTime)) || Date.parse(payload.expirationTime) <= now())
+        const expiration = normalizeExpiration(payload.expirationTime);
+        if (expiration === null || Date.parse(expiration) <= now())
           return respond(res, 502, { error: 'invalid_convai_response' });
-        result.expirationTime = payload.expirationTime;
+        result.expirationTime = expiration;
       }
       respond(res, 200, result);
     } catch {
