@@ -1,0 +1,5 @@
+{
+  "node": "C:/PATH/TO/node.exe",
+  "workingDirectory": "C:/PRIVATE/OPERATOR/CONFIG",
+  "script": "C:/PATH/TO/VR-Statics/editor-auth/editor-token.mjs"
+}
